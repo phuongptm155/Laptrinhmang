@@ -1,0 +1,116 @@
+
+#include "pch.h"
+#include <iostream>
+#include<winsock2.h>
+using namespace std;
+int numClients = 0;
+char message[256];
+typedef struct user {
+	char MSSV[10];
+	char password[26];
+	float diem;
+};
+typedef struct client {
+	bool isLogin = false;
+	SOCKET clientSocket;
+	user inputUser;
+};
+char buf[256];
+int main()
+{
+	WSADATA wsa;
+	WSAStartup(MAKEWORD(2, 2), &wsa);
+	SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	SOCKADDR_IN addr;
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	addr.sin_port = htons(8000);
+	bind(listener, (SOCKADDR *)&addr, sizeof(addr));
+	listen(listener, 5);
+	fd_set fdread;
+	int ret;
+	client clients[64];
+	int numClients = 0;
+	printf("Doi ket noi tu Client...\n");
+
+	while (1) {
+		FD_ZERO(&fdread);
+		FD_SET(listener, &fdread);
+		for (int i = 0; i < numClients; i++)
+		FD_SET(clients[i].clientSocket, &fdread);
+		ret = select(0, &fdread, NULL, NULL, NULL);
+		if (ret == SOCKET_ERROR) {
+			printf("Error!!!\n");
+			break;
+		}
+		if (ret > 0) {
+			if (FD_ISSET(listener, &fdread)) {
+				SOCKET newClient = accept(listener, NULL, NULL);
+				printf("Co ket noi moi: %d\n", newClient);
+				clients[numClients].clientSocket = newClient;
+				numClients++;
+				strcpy(message, "Nhap MSSV+password theo dung cu phap:");
+				send(newClient, message, strlen(message), 0);
+			}
+			for (int i = 0; i < numClients; i++) {
+				if (FD_ISSET(clients[i].clientSocket, &fdread)) {
+					if (!clients[i].isLogin)
+					{
+						char filebuf[256];
+						char sv[8], mssv[10], pass[20], password[20];
+						ret = recv(clients[i].clientSocket, buf, sizeof(buf), 0);
+						if (ret > 0) {
+							buf[ret] = 0;
+							printf("Received from %d: %s\n", clients[i].clientSocket, buf);
+							if (buf[strlen(buf) - 1] == '\n')
+								buf[strlen(buf) - 1] = 0;
+							ret = sscanf(buf, "%s %s %s %s", sv, mssv, pass, password);
+							if (ret == 4)
+							{
+								FILE *f = fopen("data.txt", "r");
+								while (fgets(filebuf, sizeof(filebuf), f))
+								{
+									// Xoa ky tu xuong dong neu co
+									if (filebuf[strlen(filebuf) - 1] == '\n')
+										filebuf[strlen(filebuf) - 1] = 0;
+									sscanf(filebuf, "%s %s %f", clients[i].inputUser.MSSV, clients[i].inputUser.password, &clients[i].inputUser.diem);
+									if ((strcmp(sv, "MSSV:") == 0) && (strcmp(pass, "password:") == 0) && (strcmp(clients[i].inputUser.MSSV, mssv) == 0) && (strcmp(clients[i].inputUser.password, password) == 0))
+									{
+										clients[i].isLogin = true;
+										strcpy(message, "OK diem:");
+										char diem[10];
+										itoa(clients[i].inputUser.diem, diem, 10);
+										strcat(message, diem);
+										send(clients[i].clientSocket, message, strlen(message), 0);
+										break;
+									}
+								}
+								fclose(f);	
+							}
+							else {
+								strcpy(message, "Nhap MSSV+password theo dung cu phap:");
+								send(clients[i].clientSocket, message, strlen(message), 0);
+							}
+						}
+						else {
+							clients[i] = clients[numClients - 1];
+							numClients--;
+							i--;
+							break;
+						}
+					}
+					if(!clients[i].isLogin){
+						strcpy(message, "Phai nhap MSSV+password chinh xac va dung cu phap :");
+						send(clients[i].clientSocket, message, strlen(message), 0);
+					}
+				
+				}
+	
+			}
+		}
+	}
+	WSACleanup();
+	return 0;
+}
+
+
